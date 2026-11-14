@@ -1,6 +1,6 @@
 # Setup
 
-One-time steps, for a person. About an hour. Nothing here is read by the agents.
+One-time steps, for a person. Nothing here is read by the agents.
 
 ## 1. Copy the factory into your project
 
@@ -39,6 +39,8 @@ gh label create needs-user --description "Waits on the person; holds a merge"
 - The merge workflow needs no setting beyond the labels. If a push to `main` must
   start another workflow (a deploy), add a token that can merge as the secret
   `MERGE_TOKEN`: a merge made with the default token starts nothing.
+- A pull request from a fork runs its own copy of `factory/gate.sh`, so a green gate
+  there proves little. Read a fork's pull request before you arm it.
 - Whoever can label a pull request can merge it. Keep triage rights to people and
   agents you would let merge.
 
@@ -54,6 +56,8 @@ Linear connector, told only to run its skill. A starting schedule:
 | Customer | `/customer-pass` | Daily, in an environment that holds its test account |
 | Quality | `/quality-pass` | Twice a week |
 | Weekly review | `/weekly-review` | Mondays |
+
+`/decisions` is not scheduled: the person runs it when they have a moment.
 
 Give no pass a production credential. `factory/preflight.sh` stops a build pass that
 finds one.
