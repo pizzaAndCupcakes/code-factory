@@ -1,0 +1,2 @@
+# Names of environment variables that reach production, one a line.
+# factory/preflight.sh stops a build pass when any of them is set.

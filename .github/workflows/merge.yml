@@ -1,0 +1,116 @@
+name: Merge
+
+# Merges a pull request that nobody needs to look at again (factory/RULES.md, "Merging").
+#
+# A pull request is armed with the label `auto-merge`: by the reviewer when it passes,
+# or by the implementor on the small path (label `small`). This workflow merges an
+# armed pull request once the `gate` check is green on its exact head commit. A push
+# after arming removes the label, because a verdict covers one commit and no later one.
+#
+# It runs from the default branch's copy of this file (pull_request_target and
+# workflow_run both do), so a pull request cannot change the rules it is merged under.
+# It never checks out or runs the pull request's code.
+#
+# A merge made with the default token does not start other workflows. If a push to
+# main must start one (a deploy), store a token that can merge as the secret MERGE_TOKEN.
+
+on:
+  pull_request_target:
+    types: [labeled, synchronize]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+
+env:
+  # The small path's limit, in changed lines. factory/check.sh holds it to RULES.md.
+  SMALL_MAX: 60
+  # Paths a small pull request may never touch.
+  SMALL_NEVER: '^(\.github/|\.claude/|factory/|(.*/)?migrations?/)'
+  GATE: gate
+  GH_TOKEN: ${{ secrets.MERGE_TOKEN || github.token }}
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  void:
+    name: A push voids the pass
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      github.event.action == 'synchronize' &&
+      contains(github.event.pull_request.labels.*.name, 'auto-merge')
+    runs-on: ubuntu-latest
+    # One at a time for a pull request, and only the first of two quick pushes speaks.
+    concurrency:
+      group: void-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      - env:
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if gh pr view "$PR" --json labels --jq '.labels[].name' | grep -qx auto-merge; then
+            gh pr edit "$PR" --remove-label auto-merge
+            gh pr comment "$PR" --body "**[merge]** A commit arrived after this pull request was armed, so \`auto-merge\` is off. It needs a new pass."
+          else
+            echo "#$PR is already disarmed."
+          fi
+
+  merge:
+    name: Merge when armed and green
+    if: >-
+      (github.event_name == 'pull_request_target' &&
+       github.event.action == 'labeled' &&
+       github.event.label.name == 'auto-merge') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'pull_request')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: merge-${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
+      cancel-in-progress: false
+    steps:
+      - env:
+          SHA: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          # The open pull request whose head is this exact commit.
+          pr=$(gh pr list --state open --limit 200 \
+                 --json number,headRefOid,isDraft,labels,additions,deletions \
+               | jq -c --arg sha "$SHA" 'map(select(.headRefOid == $sha)) | .[0] // empty')
+          if [ -z "$pr" ]; then echo "No open pull request has $SHA as its head."; exit 0; fi
+          n=$(jq -r .number <<<"$pr")
+          has() { jq -e --arg l "$1" '.labels | map(.name) | index($l) != null' <<<"$pr" > /dev/null; }
+          refuse() {
+            gh pr edit "$n" --remove-label auto-merge
+            gh pr comment "$n" --body "**[merge]** Not merged, and \`auto-merge\` is off: $1"
+            echo "Refused #$n: $1"
+            exit 0
+          }
+
+          has auto-merge || { echo "#$n is not armed."; exit 0; }
+          if [ "$(jq -r .isDraft <<<"$pr")" = "true" ]; then echo "#$n is a draft: it waits for a person's step."; exit 0; fi
+          if has needs-user; then echo "#$n waits on the person."; exit 0; fi
+
+          if has small; then
+            lines=$(jq -r '.additions + .deletions' <<<"$pr")
+            if [ "$lines" -gt "$SMALL_MAX" ]; then
+              refuse "it is labelled \`small\` and changes $lines lines. The small path takes at most $SMALL_MAX; this one needs a review."
+            fi
+            guarded=$(gh pr view "$n" --json files --jq '.files[].path' | grep -E "$SMALL_NEVER" || true)
+            if [ -n "$guarded" ]; then
+              refuse "it is labelled \`small\` and touches a path the small path may not: $(echo $guarded). It needs a review."
+            fi
+          fi
+
+          # The gate, on this commit and no other.
+          gate=$(gh api "repos/$GH_REPO/commits/$SHA/check-runs" --paginate \
+                   --jq '.check_runs[] | [.name, .started_at, (.conclusion // "running")] | @tsv' \
+                 | awk -F'\t' -v g="$GATE" '$1 == g' | sort -k2 | tail -1 | cut -f3)
+          if [ "${gate:-none}" != "success" ]; then echo "The $GATE check on $SHA is ${gate:-not there yet}; nothing to do."; exit 0; fi
+
+          gh pr merge "$n" --merge --match-head-commit "$SHA"
+          echo "Merged #$n at $SHA."
