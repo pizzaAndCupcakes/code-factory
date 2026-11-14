@@ -23,7 +23,8 @@ for the person. This version is that factory with six changes made in answer.
 | The docs every agent read first reached 83 KB | One home per rule, and a size budget the build enforces |
 
 The six changes are new. They pass this repository's own checks and an end-to-end
-test of the merge workflow, and they have not yet run for six weeks.
+test of the merge workflow (this repository's first pull requests), and they have
+not yet run for six weeks.
 
 ## What is here
 
@@ -62,3 +63,7 @@ they are shown one item at a time, with the options, the costs and a recommendat
 
 You need Claude Code with scheduled cloud sessions, a Linear team and a GitHub
 repository with Actions. Then follow `factory/SETUP.md`.
+
+## Licence
+
+MIT. See `LICENSE`.
