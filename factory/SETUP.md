@@ -39,6 +39,8 @@ gh label create needs-user --description "Waits on the person; holds a merge"
 - The merge workflow needs no setting beyond the labels. If a push to `main` must
   start another workflow (a deploy), add a token that can merge as the secret
   `MERGE_TOKEN`: a merge made with the default token starts nothing.
+- A pull request from a fork runs its own copy of `factory/gate.sh`, so a green gate
+  there proves little. Read a fork's pull request before you arm it.
 - Whoever can label a pull request can merge it. Keep triage rights to people and
   agents you would let merge.
 
