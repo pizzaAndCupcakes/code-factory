@@ -1,6 +1,6 @@
 # Setup
 
-One-time steps, for a person. About an hour. Nothing here is read by the agents.
+One-time steps, for a person. Nothing here is read by the agents.
 
 ## 1. Copy the factory into your project
 
