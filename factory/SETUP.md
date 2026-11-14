@@ -55,6 +55,8 @@ Linear connector, told only to run its skill. A starting schedule:
 | Quality | `/quality-pass` | Twice a week |
 | Weekly review | `/weekly-review` | Mondays |
 
+`/decisions` is not scheduled: the person runs it when they have a moment.
+
 Give no pass a production credential. `factory/preflight.sh` stops a build pass that
 finds one.
 
